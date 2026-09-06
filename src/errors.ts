@@ -2251,3 +2251,29 @@ export function isWalletConnectionTimeoutError(err: unknown): err is WalletConne
   return err instanceof WalletConnectionTimeoutError;
 }
 
+/** Public install page for the Freighter browser extension. */
+export const FREIGHTER_INSTALL_URL = "https://www.freighter.app";
+
+/** Thrown when a Freighter operation is attempted without the extension available. */
+export class FreighterNotInstalledError extends StellarSplitError {
+  /** Where the user can install the extension. */
+  readonly installUrl: string;
+
+  constructor(installUrl: string = FREIGHTER_INSTALL_URL, raw?: string) {
+    super(
+      `Freighter wallet is not installed. Install it from ${installUrl} and reload the page.`,
+      "FREIGHTER_NOT_INSTALLED",
+      { installUrl },
+      raw
+    );
+    this.name = "FreighterNotInstalledError";
+    this.installUrl = installUrl;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+export function isFreighterNotInstalledError(
+  err: unknown
+): err is FreighterNotInstalledError {
+  return err instanceof FreighterNotInstalledError;
+}
