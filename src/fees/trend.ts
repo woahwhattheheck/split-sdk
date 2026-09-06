@@ -44,6 +44,60 @@ interface FeeSample {
 }
 
 /**
+ * Compute a Simple Moving Average series over `samples`.
+ *
+ * The result has the same length as the input so a caller can plot it
+ * directly against the samples without re-aligning indices. The first
+ * `windowSize - 1` entries have no full window behind them and are `NaN`
+ * rather than a partial average, which would understate early movement and
+ * read as real signal.
+ *
+ * Pure: the input array is never read beyond the current window and is never
+ * mutated.
+ *
+ * @param samples - Fee samples, oldest first.
+ * @param windowSize - Number of samples per average. Must be an integer >= 1.
+ * @returns SMA series, same length as `samples`, `NaN`-padded at the front.
+ * @throws {RangeError} When `windowSize` is not an integer >= 1.
+ *
+ * @example
+ * ```typescript
+ * computeMovingAverage([1, 2, 3, 4], 2); // [NaN, 1.5, 2.5, 3.5]
+ * ```
+ */
+export function computeMovingAverage(
+  samples: number[],
+  windowSize: number,
+): number[] {
+  if (!Number.isInteger(windowSize) || windowSize < 1) {
+    throw new RangeError(
+      `windowSize must be an integer >= 1, got ${windowSize}`,
+    );
+  }
+
+  const result: number[] = new Array(samples.length);
+
+  for (let i = 0; i < samples.length; i++) {
+    if (i < windowSize - 1) {
+      result[i] = Number.NaN;
+      continue;
+    }
+
+    // Summed per window rather than by a running total: the window is small
+    // and this avoids the drift a subtract-the-outgoing-value accumulator
+    // develops over a long series of floats.
+    let sum = 0;
+    for (let j = i - windowSize + 1; j <= i; j++) {
+      sum += samples[j] as number;
+    }
+
+    result[i] = sum / windowSize;
+  }
+
+  return result;
+}
+
+/**
  * Tracks a rolling window of Horizon fee_stats snapshots and recommends a
  * base fee at a caller-specified acceptance percentile.
  *
