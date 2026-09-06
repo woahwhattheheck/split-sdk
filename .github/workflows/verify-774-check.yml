@@ -1,0 +1,24 @@
+name: verify-774 check
+on:
+  push:
+    branches: [ "ci/verify-774" ]
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install --no-audit --no-fund
+      - name: Typecheck
+        run: |
+          set +e
+          npx tsc --noEmit > tsc.out 2>&1
+          echo "TOTAL_TS_ERRORS=$(grep -cE 'error TS' tsc.out || echo 0)"
+          echo "--- errors in src/adapters/walletconnect.ts ---"
+          grep -E '^src/adapters/walletconnect\.ts' tsc.out || echo "(none)"
+      - name: Unit tests
+        if: always()
+        run: npx vitest run test/walletconnect.session.test.ts
