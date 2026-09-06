@@ -46,10 +46,12 @@ describe("assertSplitRatiosSumToOne", () => {
   });
 
   it("passes ratios that sum to 1 only within floating-point tolerance", () => {
-    // 0.1 + 0.2 + 0.7 === 0.9999999999999999, not 1
-    expect(0.1 + 0.2 + 0.7).not.toBe(1);
+    // The same three ratios sum differently depending on order:
+    // 0.1 + 0.2 + 0.7 === 1, but 0.7 + 0.2 + 0.1 === 0.9999999999999999.
+    // An exact equality check would reject the second ordering.
+    expect(0.7 + 0.2 + 0.1).not.toBe(1);
     expect(() =>
-      assertSplitRatiosSumToOne([r(A, 0.1), r(B, 0.2), r(C, 0.7)])
+      assertSplitRatiosSumToOne([r(A, 0.7), r(B, 0.2), r(C, 0.1)])
     ).not.toThrow();
   });
 
