@@ -42,6 +42,16 @@ export interface WaterfallTier {
   minimumAmount: bigint;
   /** Asset for this tier. Defaults to the invoice's token when omitted. */
   asset?: Asset;
+  /**
+   * Preference score for this tier. Higher scores are funded first.
+   *
+   * Tiers sharing a score keep their declaration order, so an array with no
+   * scores at all behaves exactly as before. Must be a finite number when
+   * present.
+   *
+   * @default 0
+   */
+  score?: number;
 }
 
 /** Ordered recipient tiers with minimum amounts, plus overflow behavior. */
