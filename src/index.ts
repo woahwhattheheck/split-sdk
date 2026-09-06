@@ -1427,3 +1427,4 @@ export type {
   SubmitTransactionOptions,
   SubmitServer,
 } from "./transaction/submit.js";
+export { FreighterNotInstalledError, isFreighterNotInstalledError, FREIGHTER_INSTALL_URL } from "./errors.js";
