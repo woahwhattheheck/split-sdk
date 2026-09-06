@@ -15,10 +15,16 @@ import { createHmac, timingSafeEqual } from "crypto";
 const HEX_PATTERN = /^[0-9a-f]+$/i;
 
 /** Runtime types accepted for the HMAC key and the signed payload. */
-type BinaryInput = string | Uint8Array;
+type BinaryInput = string | NodeJS.ArrayBufferView;
 
+/**
+ * `ArrayBuffer.isView` is used rather than `instanceof Uint8Array` because
+ * `instanceof` is realm-bound: a `Buffer` created in another realm (a worker
+ * thread, a `vm` context, or a test runner that isolates modules) fails the
+ * prototype check even though it is a perfectly valid binary input.
+ */
 function isBinaryInput(value: unknown): value is BinaryInput {
-  return typeof value === "string" || value instanceof Uint8Array;
+  return typeof value === "string" || ArrayBuffer.isView(value);
 }
 
 /**
