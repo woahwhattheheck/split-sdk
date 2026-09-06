@@ -1,3 +1,4 @@
+import { SdkError, SdkErrorCode } from "./errors.js";
 import type { RequestInterceptor, ResponseInterceptor } from "./interceptors.js";
 
 export type CompressionAlgorithm = "gzip" | "deflate";
@@ -140,4 +141,119 @@ export function createCompressionResponseInterceptor(_config: CompressionConfig)
       result: await decompressPayload(res.result),
     };
   };
+}
+
+// ---------------------------------------------------------------------------
+// Invoice metadata encoding (#619)
+// ---------------------------------------------------------------------------
+
+/** Default byte ceiling for an encoded metadata string. */
+export const DEFAULT_METADATA_MAX_BYTES = 512;
+
+/**
+ * base64url alphabet. Trailing padding is tolerated on decode even though it
+ * is never produced, so a caller that padded the value elsewhere still round
+ * trips.
+ */
+const BASE64URL_PATTERN = /^[A-Za-z0-9_-]*={0,2}$/;
+
+/**
+ * Encode an invoice metadata object as a compact base64url string.
+ *
+ * The value is JSON-serialised then base64url encoded without padding, so the
+ * result is safe to place in a Stellar transaction memo or an IPFS payload.
+ *
+ * @param metadata - Any JSON-serialisable plain object.
+ * @param maxBytes - Ceiling for the encoded string, in bytes.
+ * @returns The encoded metadata.
+ * @throws {SdkError} With {@link SdkErrorCode.CONTRACT_REJECTED} when the
+ *   input is not a serialisable plain object, or when the encoded result
+ *   exceeds `maxBytes`.
+ */
+export function compressMetadata(
+  metadata: Record<string, unknown>,
+  maxBytes: number = DEFAULT_METADATA_MAX_BYTES,
+): string {
+  if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata)) {
+    throw new SdkError(
+      "Metadata must be a plain object",
+      SdkErrorCode.CONTRACT_REJECTED,
+      { received: metadata === null ? "null" : typeof metadata },
+    );
+  }
+
+  if (!Number.isFinite(maxBytes) || maxBytes <= 0) {
+    throw new SdkError(
+      "maxBytes must be a positive, finite number",
+      SdkErrorCode.CONTRACT_REJECTED,
+      { maxBytes },
+    );
+  }
+
+  let json: string;
+  try {
+    json = JSON.stringify(metadata);
+  } catch (err) {
+    // Circular references and BigInt values both reach here.
+    throw new SdkError(
+      "Metadata is not JSON-serialisable",
+      SdkErrorCode.CONTRACT_REJECTED,
+      { reason: err instanceof Error ? err.message : String(err) },
+    );
+  }
+
+  const encoded = Buffer.from(json, "utf8").toString("base64url");
+  const bytes = Buffer.byteLength(encoded, "utf8");
+
+  if (bytes > maxBytes) {
+    throw new SdkError(
+      `Encoded metadata is ${bytes} bytes, over the ${maxBytes} byte limit`,
+      SdkErrorCode.CONTRACT_REJECTED,
+      { bytes, maxBytes },
+    );
+  }
+
+  return encoded;
+}
+
+/**
+ * Decode a metadata string produced by {@link compressMetadata}.
+ *
+ * @param encoded - base64url-encoded metadata.
+ * @returns The decoded object.
+ * @throws {SdkError} With {@link SdkErrorCode.CONTRACT_REJECTED} when the
+ *   input is not base64url, does not contain JSON, or does not decode to a
+ *   plain object.
+ */
+export function decompressMetadata(encoded: string): Record<string, unknown> {
+  if (typeof encoded !== "string" || !BASE64URL_PATTERN.test(encoded)) {
+    throw new SdkError(
+      "Encoded metadata is not a base64url string",
+      SdkErrorCode.CONTRACT_REJECTED,
+      { received: typeof encoded },
+    );
+  }
+
+  const json = Buffer.from(encoded, "base64url").toString("utf8");
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch (err) {
+    throw new SdkError(
+      "Encoded metadata does not contain valid JSON",
+      SdkErrorCode.CONTRACT_REJECTED,
+      { reason: err instanceof Error ? err.message : String(err) },
+    );
+  }
+
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new SdkError(
+      "Encoded metadata did not decode to an object",
+      SdkErrorCode.CONTRACT_REJECTED,
+      { decodedType: parsed === null ? "null" : Array.isArray(parsed) ? "array" : typeof parsed },
+    );
+  }
+
+  return parsed as Record<string, unknown>;
 }
