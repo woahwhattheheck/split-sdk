@@ -3,6 +3,7 @@
  */
 
 import type { WalletAdapter } from "../../types.js";
+import { FreighterNotInstalledError } from "../../errors.js";
 
 type Unsubscribe = () => void;
 
@@ -16,6 +17,29 @@ declare global {
   }
 }
 
+type FreighterApi = NonNullable<Window["freighter"]>;
+
+/**
+ * Resolve the injected Freighter API, or `undefined` when it is unavailable.
+ *
+ * `window` itself is checked with `typeof` first: in SSR, Node and worker
+ * contexts a bare `window` reference throws before any property access, which
+ * is the raw crash callers were seeing instead of an actionable error.
+ */
+function getFreighter(): FreighterApi | undefined {
+  if (typeof window === "undefined") return undefined;
+  return window.freighter;
+}
+
+/** Resolve the injected Freighter API, or throw {@link FreighterNotInstalledError}. */
+function requireFreighter(): FreighterApi {
+  const freighter = getFreighter();
+  if (!freighter) {
+    throw new FreighterNotInstalledError();
+  }
+  return freighter;
+}
+
 export class FreighterAdapter implements WalletAdapter {
   readonly name = "Freighter";
   private accountChangeHandlers: Array<(address: string) => void> = [];
@@ -23,11 +47,9 @@ export class FreighterAdapter implements WalletAdapter {
   private lastKnownAddress: string | null = null;
 
   async connect(): Promise<string> {
-    if (!window.freighter) {
-      throw new Error("Freighter wallet not installed");
-    }
+    const freighter = requireFreighter();
 
-    const address = await window.freighter.getPublicKey();
+    const address = await freighter.getPublicKey();
     this.lastKnownAddress = address;
     
     // Start polling for account changes (Freighter doesn't have a native event)
@@ -37,19 +59,15 @@ export class FreighterAdapter implements WalletAdapter {
   }
 
   async sign(xdr: string, network: string): Promise<string> {
-    if (!window.freighter) {
-      throw new Error("Freighter wallet not installed");
-    }
+    const freighter = requireFreighter();
 
-    return await window.freighter.signTransaction(xdr, network);
+    return await freighter.signTransaction(xdr, network);
   }
 
   async getAddress(): Promise<string> {
-    if (!window.freighter) {
-      throw new Error("Freighter wallet not installed");
-    }
+    const freighter = requireFreighter();
 
-    return await window.freighter.getPublicKey();
+    return await freighter.getPublicKey();
   }
 
   async signTransaction(xdr: string, network: string): Promise<string> {
@@ -81,9 +99,10 @@ export class FreighterAdapter implements WalletAdapter {
 
     this.pollInterval = setInterval(async () => {
       try {
-        if (!window.freighter) return;
+        const freighter = getFreighter();
+        if (!freighter) return;
         
-        const currentAddress = await window.freighter.getPublicKey();
+        const currentAddress = await freighter.getPublicKey();
         
         if (currentAddress !== this.lastKnownAddress) {
           this.lastKnownAddress = currentAddress;
