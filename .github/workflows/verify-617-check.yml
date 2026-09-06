@@ -1,0 +1,27 @@
+name: verify-617 check
+
+on:
+  push:
+    branches: [ "ci/verify-617" ]
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck (npm run lint = tsc --noEmit)
+        run: npm run lint
+
+      - name: Unit tests for the webhook verifier
+        run: npx vitest run test/webhooks.verify.test.ts
+
+      - name: Typecheck the new test file explicitly
+        run: npx tsc --noEmit --strict --target ES2020 --module ESNext --moduleResolution bundler --types node --skipLibCheck test/webhooks.verify.test.ts
