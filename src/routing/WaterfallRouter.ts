@@ -6,13 +6,38 @@
 
 import type { Invoice } from "../types.js";
 import { ValidationError } from "../errors.js";
-import type { WaterfallConfig, WaterfallPlan, WaterfallStep } from "../types/routing.js";
+import type {
+  WaterfallConfig,
+  WaterfallPlan,
+  WaterfallStep,
+  WaterfallTier,
+} from "../types/routing.js";
+
+/**
+ * Order tiers by score, highest first, keeping declaration order among ties.
+ *
+ * Decorated with the original index and undecorated afterwards rather than
+ * relying on the sort being stable: the index tiebreak makes the ordering
+ * total, so equal-scored tiers keep FIFO order regardless of the engine or
+ * the compile target. The caller's array is never mutated.
+ */
+function orderTiersByScore(tiers: WaterfallTier[]): WaterfallTier[] {
+  return tiers
+    .map((tier, index) => ({ tier, index }))
+    .sort((a, b) => {
+      const byScore = (b.tier.score ?? 0) - (a.tier.score ?? 0);
+      return byScore !== 0 ? byScore : a.index - b.index;
+    })
+    .map((entry) => entry.tier);
+}
 
 export class WaterfallRouter {
   /**
    * Build a sequenced payment plan for `invoice` given `availableAmount`
-   * (stroops) to distribute across `config.tiers`, in declared priority
-   * order. As soon as a tier's minimumAmount exceeds what's left of
+   * (stroops) to distribute across `config.tiers`. Tiers are funded in
+   * descending `score` order, and tiers sharing a score keep their
+   * declaration order, so a config with no scores behaves exactly as before.
+   * As soon as a tier's minimumAmount exceeds what's left of
    * availableAmount, that tier and every tier after it come back with
    * `satisfied: false` and a zero amount.
    */
@@ -27,13 +52,23 @@ export class WaterfallRouter {
           minimumAmount: tier.minimumAmount.toString(),
         });
       }
+      // A NaN score makes the sort comparator return NaN, which silently
+      // yields an arbitrary order rather than an error. Reject it here.
+      if (tier.score !== undefined && !Number.isFinite(tier.score)) {
+        throw new ValidationError("WaterfallTier.score must be a finite number", {
+          recipient: tier.recipient,
+          score: String(tier.score),
+        });
+      }
     }
+
+    const orderedTiers = orderTiersByScore(config.tiers);
 
     let remaining = availableAmount;
     let blocked = false;
     const steps: WaterfallStep[] = [];
 
-    for (const tier of config.tiers) {
+    for (const tier of orderedTiers) {
       const asset = tier.asset ?? invoice.token;
 
       if (blocked || tier.minimumAmount > remaining) {
