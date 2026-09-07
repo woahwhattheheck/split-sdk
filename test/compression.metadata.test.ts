@@ -130,6 +130,28 @@ describe("decompressMetadata", () => {
   });
 });
 
+describe("browser safety", () => {
+  it("encodes and decodes with no Node Buffer global present", () => {
+    // compression.ts is isomorphic - it feature-detects CompressionStream and
+    // falls back to node:zlib - so these helpers must not need a Node global.
+    // A browser bundle without a Buffer polyfill is exactly this shape.
+    const originalBuffer = globalThis.Buffer;
+
+    try {
+      // @ts-expect-error deliberately simulating an environment with no Buffer
+      delete globalThis.Buffer;
+
+      const value = { id: "evt_1", note: "héllo ✓ 日本語" };
+      const encoded = compressMetadata(value);
+
+      expect(encoded).not.toContain("=");
+      expect(decompressMetadata(encoded)).toEqual(value);
+    } finally {
+      globalThis.Buffer = originalBuffer;
+    }
+  });
+});
+
 describe("round trip", () => {
   const cases: Array<[string, Record<string, unknown>]> = [
     ["an empty object", {}],
