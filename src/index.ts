@@ -1427,3 +1427,13 @@ export type {
   SubmitTransactionOptions,
   SubmitServer,
 } from "./transaction/submit.js";
+
+// ---------------------------------------------------------------------------
+// #619 - Invoice metadata encoding
+// ---------------------------------------------------------------------------
+
+export {
+  compressMetadata,
+  decompressMetadata,
+  DEFAULT_METADATA_MAX_BYTES,
+} from "./compression.js";
