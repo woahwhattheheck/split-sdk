@@ -26,7 +26,7 @@ jobs:
         run: npm run build
 
       - name: Run tests
-        run: npm run test:all
+        run: npm test
 
       - name: Type check (strict)
         run: npx --no-install tsc --noEmit

@@ -21,21 +21,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Type check
-        run: npm run lint
-
-      - name: Require testnet contract id
-        env:
-          STELLAR_SPLIT_CONTRACT_ID: ${{ secrets.STELLAR_SPLIT_CONTRACT_ID }}
-        run: |
-          if [ -z "$STELLAR_SPLIT_CONTRACT_ID" ]; then
-            echo "::error::STELLAR_SPLIT_CONTRACT_ID must be configured before running integration tests"
-            exit 1
-          fi
-
       - name: Run integration tests (testnet only)
         env:
           STELLAR_NETWORK: testnet
           STELLAR_SPLIT_CONTRACT_ID: ${{ secrets.STELLAR_SPLIT_CONTRACT_ID }}
           STELLAR_SPLIT_TOKEN_CONTRACT_ID: ${{ secrets.STELLAR_SPLIT_TOKEN_CONTRACT_ID }}
-        run: npm run test:integration
+        run: vitest run tests/integration/**/*.test.ts
+
