@@ -83,9 +83,10 @@ export function estimateSwapOutput(
     };
   }
 
-  // Check against max ratio threshold
-  const ratio = Number(amountIn) / Number(reserveIn);
-  if (ratio > maxRatio) {
+  // Check against max ratio threshold without coercing arbitrary-size BigInts
+  // to Number. Both operands can exceed Number.MAX_VALUE, where Infinity /
+  // Infinity would otherwise become NaN and silently bypass this guard.
+  if (ratioExceedsLimit(amountIn, reserveIn, maxRatio)) {
     throw new InsufficientLiquidityError(
       `Input amount exceeds ${(maxRatio * 100).toFixed(0)}% of pool reserves`,
       inputReserve.amount,
@@ -186,6 +187,28 @@ export function calculatePoolShare(
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+function ratioExceedsLimit(amount: bigint, reserve: bigint, limit: number): boolean {
+  if (!Number.isFinite(limit)) {
+    // Preserve the prior comparison semantics for non-finite caller values:
+    // NaN/+Infinity never reject, while -Infinity rejects every positive ratio.
+    return limit === -Infinity;
+  }
+
+  const [coefficient, exponentText] = limit.toString().toLowerCase().split("e");
+  const [integerPart, fractionalPart = ""] = coefficient!.split(".");
+  let numerator = BigInt(`${integerPart}${fractionalPart}`);
+  let denominator = 10n ** BigInt(fractionalPart.length);
+  const exponent = Number(exponentText ?? "0");
+
+  if (exponent > 0) {
+    numerator *= 10n ** BigInt(exponent);
+  } else if (exponent < 0) {
+    denominator *= 10n ** BigInt(-exponent);
+  }
+
+  return amount * denominator > reserve * numerator;
+}
 
 function computeSpotPrice(reserveIn: bigint, reserveOut: bigint): string {
   // spotPrice = reserveOut / reserveIn as a decimal string

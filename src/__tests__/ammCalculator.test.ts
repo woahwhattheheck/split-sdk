@@ -64,6 +64,23 @@ describe("constant-product invariant preservation", () => {
     );
   });
 
+  it("enforces maxRatio without overflowing arbitrary-size reserves", () => {
+    const reserveIn = 10n ** 400n;
+    const pool = makePool(reserveIn.toString(), reserveIn.toString());
+
+    expect(() =>
+      estimateSwapOutput(pool, (reserveIn * 2n).toString(), "XLM"),
+    ).toThrow(InsufficientLiquidityError);
+
+    expect(() =>
+      estimateSwapOutput(pool, (reserveIn / 4n).toString(), "XLM", 0.25),
+    ).not.toThrow();
+
+    expect(() =>
+      estimateSwapOutput(pool, (reserveIn / 4n + 1n).toString(), "XLM", 0.25),
+    ).toThrow(InsufficientLiquidityError);
+  });
+
   it("returns 0 received and leaves reserves unchanged for a zero-amount swap", () => {
     const reserveIn = 1_000_000n;
     const reserveOut = 2_000_000n;
