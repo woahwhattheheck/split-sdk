@@ -52,7 +52,7 @@ describe("constant-product invariant preservation", () => {
 
       expect(newK).toBeLessThanOrEqual(k);
       const drift = k - newK;
-      const tolerance = k / 1_000_000n; // 0.0001% relative tolerance
+      const tolerance = k / 1_000_000n;
       expect(drift).toBeLessThanOrEqual(tolerance);
     }
   });
