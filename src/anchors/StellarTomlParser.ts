@@ -87,6 +87,83 @@ export interface TomlMetadata {
 }
 
 // ---------------------------------------------------------------------------
+// SEP-1 schema version
+// ---------------------------------------------------------------------------
+
+/**
+ * `stellar.toml` schema versions this parser understands, as `major.minor`.
+ *
+ * A future schema may move or re-type fields, in which case parsing it with
+ * the current logic yields plausible-looking but wrong data rather than an
+ * error. Gating on the declared version turns that silent corruption into a
+ * clear failure.
+ */
+export const SUPPORTED_TOML_VERSIONS: readonly string[] = ["2.0", "2.1"];
+
+/**
+ * Thrown when a `stellar.toml` declares a schema version this parser does not
+ * support.
+ */
+export class UnsupportedTomlVersionError extends Error {
+  constructor(
+    /** The version exactly as it appeared in the document. */
+    public readonly version: string,
+    /** Domain the document was fetched from, when known. */
+    public readonly domain?: string,
+    /** The versions that would have been accepted. */
+    public readonly supportedVersions: readonly string[] = SUPPORTED_TOML_VERSIONS,
+  ) {
+    super(
+      `Unsupported stellar.toml VERSION "${version}"` +
+        (domain ? ` for domain "${domain}"` : "") +
+        `; supported versions are ${supportedVersions.join(", ")}`,
+    );
+    this.name = "UnsupportedTomlVersionError";
+    // Keeps `instanceof` working when the SDK is compiled to an ES5 target.
+    Object.setPrototypeOf(this, UnsupportedTomlVersionError.prototype);
+  }
+}
+
+/**
+ * Reduce a declared VERSION to the `major.minor` form used for comparison.
+ *
+ * SEP-1 documents write the version as a quoted string, commonly with a patch
+ * component (`"2.0.0"`), but an unquoted `VERSION = 2.0` is parsed by TOML as
+ * the number `2`. Both normalise to `"2.0"`, so a valid numeric patch component
+ * and the quoting style do not affect support. Malformed or extra components
+ * are rejected rather than being accepted by a valid major/minor prefix.
+ *
+ * @returns The normalised version, or `null` when the value is not a usable
+ *          version at all.
+ */
+function normaliseTomlVersion(value: unknown): string | null {
+  // An unquoted `VERSION = 2.0` arrives as the number 2. Preserve the numeric
+  // digits that remain after TOML parsing instead of rounding to one decimal:
+  // rounding would silently turn unsupported 2.04/2.14 declarations into
+  // supported 2.0/2.1 versions.
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? normaliseTomlVersion(String(value)) : null;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const match = /^(\d+)(?:\.(\d+))?(?:\.(\d+))?$/.exec(value.trim());
+  if (!match) {
+    return null;
+  }
+
+  const major = match[1];
+  const minor = match[2];
+  if (major === undefined) {
+    return null;
+  }
+
+  return `${Number(major)}.${minor === undefined ? 0 : Number(minor)}`;
+}
+
+// ---------------------------------------------------------------------------
 // Cache entry
 // ---------------------------------------------------------------------------
 
@@ -235,10 +312,42 @@ export class StellarTomlParser {
       );
     }
 
+    // First validation after a successful parse: refuse a schema version this
+    // parser was not written against, rather than silently misreading it.
+    this._assertSupportedVersion(parsed, domain);
+
     return {
       domain,
       tomlUrl,
       ...parsed,
     } as TomlMetadata;
+  }
+
+  /**
+   * Reject a document whose declared VERSION is outside
+   * {@link SUPPORTED_TOML_VERSIONS}.
+   *
+   * A document that declares no VERSION is accepted: SEP-1 does not require
+   * the field, and many published `stellar.toml` files omit it, so treating
+   * absence as a failure would reject valid anchors.
+   *
+   * @throws {UnsupportedTomlVersionError} When VERSION is present and
+   *   unsupported.
+   */
+  private _assertSupportedVersion(
+    parsed: Record<string, unknown>,
+    domain: string,
+  ): void {
+    const declared = parsed["VERSION"];
+    if (declared === undefined || declared === null) {
+      return;
+    }
+
+    const normalised = normaliseTomlVersion(declared);
+    if (normalised !== null && SUPPORTED_TOML_VERSIONS.includes(normalised)) {
+      return;
+    }
+
+    throw new UnsupportedTomlVersionError(String(declared), domain);
   }
 }

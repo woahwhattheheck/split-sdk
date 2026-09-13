@@ -162,4 +162,89 @@ describe("PaymentGraphChecker", () => {
       expect(fetchMock).toHaveBeenCalled();
     });
   });
+
+  describe("checkGraph() — negative edge weights", () => {
+    const edge = (from: string, to: string, weight: number | bigint) => ({
+      from,
+      to,
+      weight,
+    });
+
+    it("accepts a graph whose edges all have positive weights", () => {
+      const result = checker.checkGraph({
+        edges: [edge(sourceAccount, recipientA, 100), edge(recipientA, recipientB, 50)],
+      });
+
+      expect(result.valid).toBe(true);
+      expect(result.issues).toEqual([]);
+    });
+
+    it("allows zero-weight edges, which represent pass-through hops", () => {
+      const result = checker.checkGraph({
+        edges: [edge(sourceAccount, recipientA, 0), edge(recipientA, recipientB, 0n)],
+      });
+
+      expect(result.valid).toBe(true);
+      expect(result.issues).toEqual([]);
+    });
+
+    it("accepts an empty graph", () => {
+      expect(checker.checkGraph({ edges: [] }).valid).toBe(true);
+      expect(checker.checkGraph([]).valid).toBe(true);
+    });
+
+    it("fails a graph containing a negative-weight edge", () => {
+      const result = checker.checkGraph({
+        edges: [edge(sourceAccount, recipientA, 100), edge(recipientA, recipientB, -5)],
+      });
+
+      expect(result.valid).toBe(false);
+      expect(result.issues).toHaveLength(1);
+      expect(result.issues[0]?.code).toBe("NEGATIVE_EDGE_WEIGHT");
+    });
+
+    it("names the offending edge, source to target, in the message", () => {
+      const result = checker.checkGraph({
+        edges: [edge(recipientA, recipientB, -5)],
+      });
+
+      const message = result.issues[0]?.message ?? "";
+      expect(message).toContain(recipientA);
+      expect(message).toContain(recipientB);
+      expect(message).toContain("-5");
+      expect(result.issues[0]?.from).toBe(recipientA);
+      expect(result.issues[0]?.to).toBe(recipientB);
+    });
+
+    it("detects negative bigint weights", () => {
+      const result = checker.checkGraph({
+        edges: [edge(sourceAccount, recipientA, -1n)],
+      });
+
+      expect(result.valid).toBe(false);
+      expect(result.issues[0]?.weight).toBe(-1n);
+    });
+
+    it("reports every offending edge, in edge order", () => {
+      const result = checker.checkGraph({
+        edges: [
+          edge(sourceAccount, recipientA, -1),
+          edge(recipientA, recipientB, 10),
+          edge(recipientB, sourceAccount, -2n),
+        ],
+      });
+
+      expect(result.valid).toBe(false);
+      expect(result.issues).toHaveLength(2);
+      expect(result.issues[0]?.to).toBe(recipientA);
+      expect(result.issues[1]?.to).toBe(sourceAccount);
+    });
+
+    it("accepts a bare array of edges as well as { edges }", () => {
+      const edges = [edge(sourceAccount, recipientA, -3)];
+
+      expect(checker.checkGraph(edges)).toEqual(checker.checkGraph({ edges }));
+      expect(checker.checkGraph(edges).valid).toBe(false);
+    });
+  });
 });
