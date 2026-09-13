@@ -136,10 +136,12 @@ export class UnsupportedTomlVersionError extends Error {
  *          version at all.
  */
 function normaliseTomlVersion(value: unknown): string | null {
-  // An unquoted `VERSION = 2.0` arrives as the number 2; render it back to one
-  // decimal place so it takes the same path as the quoted form.
+  // An unquoted `VERSION = 2.0` arrives as the number 2. Preserve the numeric
+  // digits that remain after TOML parsing instead of rounding to one decimal:
+  // rounding would silently turn unsupported 2.04/2.14 declarations into
+  // supported 2.0/2.1 versions.
   if (typeof value === "number") {
-    return Number.isFinite(value) ? normaliseTomlVersion(value.toFixed(1)) : null;
+    return Number.isFinite(value) ? normaliseTomlVersion(String(value)) : null;
   }
 
   if (typeof value !== "string") {
