@@ -65,6 +65,16 @@ describe("StellarTomlParser — VERSION validation", () => {
     });
   });
 
+  it.each(["2.04", "2.14"])(
+    "rejects unsupported unquoted VERSION = %s without rounding it into support",
+    async (version) => {
+      stubToml(`VERSION = ${version}\n`);
+      await expect(parser.fetch(DOMAIN)).rejects.toBeInstanceOf(
+        UnsupportedTomlVersionError
+      );
+    }
+  );
+
   it("rejects a future schema version", async () => {
     stubToml(`VERSION = "3.0"\n`);
     await expect(parser.fetch(DOMAIN)).rejects.toBeInstanceOf(
