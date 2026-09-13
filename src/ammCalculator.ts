@@ -213,16 +213,19 @@ function computePriceImpact(spotPrice: string, effectivePrice: string): string {
 
   const spot = parseDecimal(spotPrice);
   const effective = parseDecimal(effectivePrice);
-  
+
   const spotScaled = spot.int * spot.scale + spot.frac;
   const effectiveScaled = effective.int * effective.scale + effective.frac;
+  const commonScale = spot.scale > effective.scale ? spot.scale : effective.scale;
+  const spotCommon = spotScaled * (commonScale / spot.scale);
+  const effectiveCommon = effectiveScaled * (commonScale / effective.scale);
 
-  if (spotScaled === 0n) return "0.00";
+  if (spotCommon === 0n) return "0.00";
 
   // (spot - effective) / spot * 100 with 4 decimal places of precision
   const SCALE = 10000n;
-  const numerator = (spotScaled - effectiveScaled) * SCALE * 100n;
-  const denominator = spotScaled;
+  const numerator = (spotCommon - effectiveCommon) * SCALE * 100n;
+  const denominator = spotCommon;
 
   if (numerator <= 0n) return "0.00";
 
