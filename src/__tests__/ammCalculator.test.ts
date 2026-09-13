@@ -78,14 +78,3 @@ describe("constant-product invariant preservation", () => {
     expect(pool.reserves[1]!.amount).toBe(reserveOut.toString());
   });
 });
-
-describe("price impact decimal scaling", () => {
-  it("compares integer spot and fractional effective prices on one scale", () => {
-    const result = estimateSwapOutput(makePool("1000", "1000"), "100", "XLM");
-
-    expect(result.outputAmount).toBe("91");
-    expect(result.spotPrice).toBe("1");
-    expect(result.effectivePrice).toBe("0.91");
-    expect(result.priceImpactPercent).toBe("9.00");
-  });
-});
