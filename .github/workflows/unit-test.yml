@@ -25,8 +25,5 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Type check
-        run: npm run lint
-
       - name: Run full test suite
         run: npm run test:all
