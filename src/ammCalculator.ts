@@ -83,9 +83,10 @@ export function estimateSwapOutput(
     };
   }
 
-  // Check against max ratio threshold
-  const ratio = Number(amountIn) / Number(reserveIn);
-  if (ratio > maxRatio) {
+  // Check against max ratio threshold without coercing arbitrary-size BigInts
+  // to Number. Both operands can exceed Number.MAX_VALUE, where Infinity /
+  // Infinity would otherwise become NaN and silently bypass this guard.
+  if (ratioExceedsLimit(amountIn, reserveIn, maxRatio)) {
     throw new InsufficientLiquidityError(
       `Input amount exceeds ${(maxRatio * 100).toFixed(0)}% of pool reserves`,
       inputReserve.amount,
@@ -187,6 +188,28 @@ export function calculatePoolShare(
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+function ratioExceedsLimit(amount: bigint, reserve: bigint, limit: number): boolean {
+  if (!Number.isFinite(limit)) {
+    // Preserve the prior comparison semantics for non-finite caller values:
+    // NaN/+Infinity never reject, while -Infinity rejects every positive ratio.
+    return limit === -Infinity;
+  }
+
+  const [coefficient, exponentText] = limit.toString().toLowerCase().split("e");
+  const [integerPart, fractionalPart = ""] = coefficient!.split(".");
+  let numerator = BigInt(`${integerPart}${fractionalPart}`);
+  let denominator = 10n ** BigInt(fractionalPart.length);
+  const exponent = Number(exponentText ?? "0");
+
+  if (exponent > 0) {
+    numerator *= 10n ** BigInt(exponent);
+  } else if (exponent < 0) {
+    denominator *= 10n ** BigInt(-exponent);
+  }
+
+  return amount * denominator > reserve * numerator;
+}
+
 function computeSpotPrice(reserveIn: bigint, reserveOut: bigint): string {
   // spotPrice = reserveOut / reserveIn as a decimal string
   if (reserveIn === 0n) return "0";
@@ -213,16 +236,19 @@ function computePriceImpact(spotPrice: string, effectivePrice: string): string {
 
   const spot = parseDecimal(spotPrice);
   const effective = parseDecimal(effectivePrice);
-  
+
   const spotScaled = spot.int * spot.scale + spot.frac;
   const effectiveScaled = effective.int * effective.scale + effective.frac;
+  const commonScale = spot.scale > effective.scale ? spot.scale : effective.scale;
+  const spotCommon = spotScaled * (commonScale / spot.scale);
+  const effectiveCommon = effectiveScaled * (commonScale / effective.scale);
 
-  if (spotScaled === 0n) return "0.00";
+  if (spotCommon === 0n) return "0.00";
 
   // (spot - effective) / spot * 100 with 4 decimal places of precision
   const SCALE = 10000n;
-  const numerator = (spotScaled - effectiveScaled) * SCALE * 100n;
-  const denominator = spotScaled;
+  const numerator = (spotCommon - effectiveCommon) * SCALE * 100n;
+  const denominator = spotCommon;
 
   if (numerator <= 0n) return "0.00";
 
