@@ -76,6 +76,10 @@ export class InvoiceBatchProcessor {
     const maxConcurrent = config.maxConcurrent ?? DEFAULT_MAX_CONCURRENT;
     const rateLimitPauseMs = config.rateLimitPauseMs ?? DEFAULT_RATE_LIMIT_PAUSE_MS;
 
+    if (!Number.isInteger(maxConcurrent) || maxConcurrent < 1) {
+      throw new RangeError("maxConcurrent must be a positive integer");
+    }
+
     let cursor = 0;
     let pausedUntil = 0;
     let slotSeq = 0;
@@ -125,7 +129,8 @@ export class InvoiceBatchProcessor {
       );
     };
 
-    for (let i = 0; i < maxConcurrent; i++) launch();
+    const initialLaunches = Math.min(maxConcurrent, invoiceIds.length);
+    for (let i = 0; i < initialLaunches; i++) launch();
 
     while (inFlight.size > 0) {
       const { slot, result } = await Promise.race(inFlight.values());
