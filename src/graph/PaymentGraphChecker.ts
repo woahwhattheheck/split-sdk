@@ -59,6 +59,49 @@ export interface PaymentGraphCheckerOptions {
   horizonUrl: string;
 }
 
+/** A single weighted edge in a payment graph. */
+export interface PaymentGraphEdge {
+  /** Source account of the hop. */
+  from: string;
+  /** Destination account of the hop. */
+  to: string;
+  /**
+   * Amount carried by this hop. Zero is allowed and represents a
+   * pass-through hop; a negative value is never valid.
+   */
+  weight: number | bigint;
+}
+
+/** A payment graph expressed as a set of weighted edges. */
+export interface PaymentGraph {
+  edges: PaymentGraphEdge[];
+}
+
+/** A single problem found by {@link PaymentGraphChecker.checkGraph}. */
+export interface NegativeEdgeWeightIssue {
+  code: "NEGATIVE_EDGE_WEIGHT";
+  /** Source account of the offending edge. */
+  from: string;
+  /** Destination account of the offending edge. */
+  to: string;
+  /** The offending weight, as supplied. */
+  weight: number | bigint;
+  /** Human-readable description naming the offending edge. */
+  message: string;
+}
+
+/** Result of validating the structure of a payment graph. */
+export interface GraphValidationResult {
+  /** `true` only when no issues were found. */
+  valid: boolean;
+  /** Every issue found, in edge order. Empty when `valid` is `true`. */
+  issues: NegativeEdgeWeightIssue[];
+}
+
+function isNegativeWeight(weight: number | bigint): boolean {
+  return typeof weight === "bigint" ? weight < 0n : weight < 0;
+}
+
 export class PaymentGraphChecker {
   private cache = new Map<string, CacheEntry>();
   private cacheTTL: number;
@@ -67,6 +110,42 @@ export class PaymentGraphChecker {
   constructor(options: PaymentGraphCheckerOptions) {
     this.cacheTTL = options.cacheTTL || 60000;
     this.horizonUrl = options.horizonUrl;
+  }
+
+  /**
+   * Validate the structure of a weighted payment graph.
+   *
+   * A negative edge weight is always a defect: traversing the graph greedily
+   * treats a negative hop as if it adds funds, which allows a route to be
+   * repeated for unbounded extraction. Zero-weight edges are legitimate and
+   * represent pass-through hops, so only strictly negative weights fail.
+   *
+   * @param graph - The graph to validate, either as `{ edges }` or as a bare
+   *                array of edges.
+   * @returns A result listing every offending edge; `valid` is `true` when
+   *          no edge has a negative weight.
+   */
+  checkGraph(graph: PaymentGraph | PaymentGraphEdge[]): GraphValidationResult {
+    const edges = Array.isArray(graph) ? graph : (graph?.edges ?? []);
+    const issues: NegativeEdgeWeightIssue[] = [];
+
+    for (const edge of edges) {
+      if (!edge || !isNegativeWeight(edge.weight)) {
+        continue;
+      }
+
+      issues.push({
+        code: "NEGATIVE_EDGE_WEIGHT",
+        from: edge.from,
+        to: edge.to,
+        weight: edge.weight,
+        message:
+          `Negative edge weight ${String(edge.weight)} on edge ` +
+          `${edge.from} -> ${edge.to}`,
+      });
+    }
+
+    return { valid: issues.length === 0, issues };
   }
 
   /**

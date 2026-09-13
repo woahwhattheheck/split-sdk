@@ -29,6 +29,16 @@ export interface SplitRecipient {
    * Defaults to 1 when not provided.
    */
   requiredSlots?: number;
+  /**
+   * This recipient's share of the total, as a finite fraction in `[0, 1]`
+   * (`0.25` = 25%).
+   *
+   * Optional. When no recipient in a split declares a ratio the split is
+   * treated as amount-only and the sum check does not apply; when any
+   * recipient declares one, every recipient's ratio must together sum to
+   * `1.0` within {@link SPLIT_RATIO_TOLERANCE}.
+   */
+  ratio?: number;
 }
 
 /** Options that control splitExecutor behaviour. */
@@ -60,6 +70,82 @@ export interface SplitExecutionResult {
 }
 
 // ---------------------------------------------------------------------------
+// Ratio validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Tolerance applied when checking that recipient ratios sum to `1.0`.
+ *
+ * Ratios are floating point, so an exact comparison rejects legitimate splits:
+ * `0.1 + 0.2 + 0.7` evaluates to `0.9999999999999999`, not `1`.
+ */
+export const SPLIT_RATIO_TOLERANCE = 1e-9;
+
+/**
+ * Thrown when recipient ratios are non-finite, outside `[0, 1]`, or do not sum
+ * to `1.0` within {@link SPLIT_RATIO_TOLERANCE}.
+ */
+export class SplitRatioSumError extends Error {
+  constructor(
+    /** The sum that was actually computed from the recipients. */
+    public readonly actualSum: number,
+    /** The tolerance the sum was compared against. */
+    public readonly tolerance: number = SPLIT_RATIO_TOLERANCE,
+  ) {
+    super(
+      `Split ratios must each be finite values in [0, 1] and sum to 1.0 ` +
+        `(tolerance ${tolerance}); got sum ${actualSum}`,
+    );
+    this.name = "SplitRatioSumError";
+    // Keeps `instanceof` working when the SDK is compiled to an ES5 target.
+    Object.setPrototypeOf(this, SplitRatioSumError.prototype);
+  }
+}
+
+/**
+ * Assert that recipient ratios are finite fractions in `[0, 1]` and sum to
+ * `1.0` within {@link SPLIT_RATIO_TOLERANCE}.
+ *
+ * A split that declares no ratios at all is amount-only and passes untouched,
+ * so existing callers are unaffected. Once any recipient declares a ratio the
+ * whole split is validated, and a recipient that omits one contributes `0` —
+ * which surfaces as a failed sum rather than being silently ignored.
+ *
+ * @throws {SplitRatioSumError} When any ratio is invalid or the ratios do not
+ *   sum to `1.0`.
+ */
+export function assertSplitRatiosSumToOne(
+  recipients: SplitRecipient[],
+): void {
+  const declaresRatio = recipients.some(
+    (recipient) => recipient?.ratio !== undefined,
+  );
+
+  if (!declaresRatio) {
+    return;
+  }
+
+  let sum = 0;
+  let hasInvalidRatio = false;
+  for (const recipient of recipients) {
+    const ratio = recipient?.ratio ?? 0;
+    if (!Number.isFinite(ratio) || ratio < 0 || ratio > 1) {
+      hasInvalidRatio = true;
+    }
+    sum += ratio;
+  }
+
+  // A hostile pair such as -1 + 2 has a superficially valid aggregate but is
+  // not a valid split. The negated comparison also makes a NaN sum fail closed.
+  if (
+    hasInvalidRatio ||
+    !(Math.abs(sum - 1) <= SPLIT_RATIO_TOLERANCE)
+  ) {
+    throw new SplitRatioSumError(sum);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // splitExecutor
 // ---------------------------------------------------------------------------
 
@@ -72,6 +158,9 @@ export interface SplitExecutionResult {
  *
  * @returns {@link SplitExecutionResult} with capacity check outcomes.
  *
+ * @throws {SplitRatioSumError} When recipients declare invalid ratios or ratios
+ *   that do not sum to `1.0` within {@link SPLIT_RATIO_TOLERANCE}. Checked
+ *   before any other pre-flight work.
  * @throws {SubentryCapacityGuardError} When any recipient's account cannot
  *   accommodate the required subentry slots and `skipCapacityCheck` is not set.
  *
@@ -98,6 +187,10 @@ export async function splitExecutor(
     skipCapacityCheck = false,
     horizonUrl = "https://horizon.stellar.org",
   } = options;
+
+  // Validate the split itself before any network work or transaction building:
+  // an over- or under-allocated split must never reach the capacity checks.
+  assertSplitRatiosSumToOne(recipients);
 
   const capacityChecks: Record<string, SubentryCapacityResult> = {};
 

@@ -635,6 +635,16 @@ export type {
   InvoiceCancelledData,
   InvoiceExpiredData,
 } from "./webhookMiddleware.js";
+
+// Standalone synchronous webhook signature verification (#617).
+// `verifyWebhookSignature` above is the isomorphic, async verifier from
+// ./webhookMiddleware.js and is intentionally left untouched; the helpers
+// below are the Node-only synchronous equivalents.
+export {
+  verifyWebhookSignature as verifyWebhookSignatureSync,
+  assertWebhookSignature,
+  WebhookVerificationError,
+} from "./webhooks/verify.js";
 // ---------------------------------------------------------------------------
 // Lazy factories for heavy modules
 // ---------------------------------------------------------------------------
