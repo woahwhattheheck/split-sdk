@@ -266,7 +266,16 @@ export function decompressMetadata(encoded: string): Record<string, unknown> {
     );
   }
 
-  const json = fromBase64Url(encoded);
+  let json: string;
+  try {
+    json = fromBase64Url(encoded);
+  } catch (err) {
+    throw new SdkError(
+      "Encoded metadata is not valid base64url",
+      SdkErrorCode.CONTRACT_REJECTED,
+      { reason: err instanceof Error ? err.message : String(err) },
+    );
+  }
 
   let parsed: unknown;
   try {
