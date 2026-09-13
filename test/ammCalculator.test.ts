@@ -45,6 +45,20 @@ describe("estimateSwapOutput", () => {
     expect(parseFloat(result.spotPrice)).toBeCloseTo(1.0);
   });
 
+  it("normalizes integer and fractional prices before computing impact", () => {
+    const pool = makePool([
+      { asset: ASSET_X, amount: "1000" },
+      { asset: ASSET_Y, amount: "1000" },
+    ]);
+
+    const result = estimateSwapOutput(pool, "100", ASSET_X);
+
+    expect(result.outputAmount).toBe("91");
+    expect(result.spotPrice).toBe("1");
+    expect(result.effectivePrice).toBe("0.91");
+    expect(result.priceImpactPercent).toBe("9.00");
+  });
+
   it("returns zero output and zero price impact for zero input", () => {
     const result = estimateSwapOutput(POOL, "0", ASSET_X);
     expect(result.outputAmount).toBe("0");
