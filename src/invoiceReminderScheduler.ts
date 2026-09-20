@@ -31,6 +31,15 @@ export interface InvoiceReminderSchedulerEventMap {
  */
 export type InvoiceDueAtResolver = (invoiceId: string) => Promise<number> | number;
 
+export interface PendingReminder {
+  /** Opaque identifier used for targeted cancellation. */
+  reminderId: string;
+  /** Invoice this reminder belongs to. */
+  invoiceId: string;
+  /** Unix timestamp (milliseconds) when the reminder will fire. */
+  remindAt: number;
+}
+
 export interface InvoiceReminderSchedulerOptions {
   /**
    * How long (ms) after a reminder's scheduled fire time it is still
@@ -97,6 +106,72 @@ export class InvoiceReminderScheduler extends TypedEventEmitter<InvoiceReminderS
 
     this._persist();
     return created;
+  }
+
+  /**
+   * Register one reminder for an absolute fire time.
+   *
+   * The returned ID is intentionally opaque and remains stable across process
+   * restarts because it is persisted with the underlying reminder schedule.
+   */
+  async scheduleReminder(invoiceId: string, remindAt: number): Promise<string> {
+    const dueAt = await this.getDueAt(invoiceId);
+    const entry: ReminderSchedule = {
+      id: randomUUID(),
+      invoiceId,
+      offsetMs: dueAt - remindAt,
+      dueAt,
+      fireAt: remindAt,
+      status: "pending",
+    };
+
+    this.schedules.push(entry);
+    this._arm(entry);
+    this._persist();
+    return entry.id;
+  }
+
+  /**
+   * Cancel one pending reminder by its opaque ID.
+   *
+   * Returns false for an unknown reminder or one that has already fired,
+   * expired, or been cancelled.
+   */
+  cancelReminder(reminderId: string): boolean {
+    const index = this.schedules.findIndex((s) => s.id === reminderId);
+    const entry = index >= 0 ? this.schedules[index] : undefined;
+    if (!entry || entry.status !== "pending") return false;
+
+    const timer = this.timers.get(reminderId);
+    if (timer !== undefined) clearTimeout(timer);
+    this.timers.delete(reminderId);
+
+    this.schedules[index] = { ...entry, status: "cancelled" };
+    this._persist();
+    return true;
+  }
+
+  /** Return every reminder that has not fired, expired, or been cancelled. */
+  getPendingReminders(): PendingReminder[] {
+    return this.schedules
+      .filter((s) => s.status === "pending")
+      .map((s) => ({
+        reminderId: s.id,
+        invoiceId: s.invoiceId,
+        remindAt: s.fireAt,
+      }));
+  }
+
+  /**
+   * Cancel every in-memory timer and clear persisted reminder schedules.
+   * Intended for explicit reset/test teardown; unlike destroy(), this removes
+   * stored state as well.
+   */
+  clearAllReminders(): void {
+    for (const timer of this.timers.values()) clearTimeout(timer);
+    this.timers.clear();
+    this.schedules = [];
+    this._persist();
   }
 
   /** Remove all pending reminders for an invoice from the store. */
