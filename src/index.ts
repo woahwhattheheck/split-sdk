@@ -834,6 +834,7 @@ export type {
   InvoiceReminderSchedulerEventMap,
   InvoiceDueAtResolver,
   InvoiceReminderSchedulerOptions,
+  PendingReminder,
 } from "./invoiceReminderScheduler.js";
 export { loadReminderSchedules, saveReminderSchedules } from "./snapshot.js";
 export type { ReminderSchedule, ReminderEvent, ReminderStatus } from "./types.js";
