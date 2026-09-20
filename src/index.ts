@@ -635,16 +635,6 @@ export type {
   InvoiceCancelledData,
   InvoiceExpiredData,
 } from "./webhookMiddleware.js";
-
-// Standalone synchronous webhook signature verification (#617).
-// `verifyWebhookSignature` above is the isomorphic, async verifier from
-// ./webhookMiddleware.js and is intentionally left untouched; the helpers
-// below are the Node-only synchronous equivalents.
-export {
-  verifyWebhookSignature as verifyWebhookSignatureSync,
-  assertWebhookSignature,
-  WebhookVerificationError,
-} from "./webhooks/verify.js";
 // ---------------------------------------------------------------------------
 // Lazy factories for heavy modules
 // ---------------------------------------------------------------------------
@@ -1438,13 +1428,3 @@ export type {
   SubmitTransactionOptions,
   SubmitServer,
 } from "./transaction/submit.js";
-
-// ---------------------------------------------------------------------------
-// #619 - Invoice metadata encoding
-// ---------------------------------------------------------------------------
-
-export {
-  compressMetadata,
-  decompressMetadata,
-  DEFAULT_METADATA_MAX_BYTES,
-} from "./compression.js";
